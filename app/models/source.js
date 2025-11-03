@@ -8,16 +8,20 @@ class Source {
 
   bot;
 
+  threadId;
+
   createdAt;
 
   constructor({
     type,
     name,
     bot,
+    threadId = null,
   }) {
     this.type = type;
     this.name = name || (type === SOURCE_TYPE_GROUP ? t('__SOURCE_NAME_SOME_GROUP') : t('__SOURCE_NAME_SOMEONE'));
     this.bot = bot;
+    this.threadId = threadId;
     this.createdAt = Math.floor(Date.now() / 1000);
   }
 }

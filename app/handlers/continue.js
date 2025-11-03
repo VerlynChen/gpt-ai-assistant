@@ -21,11 +21,20 @@ const exec = (context) => check(context) && (
     const { lastMessage } = prompt;
     if (lastMessage.isEnquiring) prompt.erase();
     try {
-      const { text, isFinishReasonStop } = await generateCompletion({ prompt });
+      const { text, isFinishReasonStop, threadId } = await generateCompletion({ 
+        prompt,
+        threadId: context.source.threadId,
+      });
       prompt.patch(text);
       if (lastMessage.isEnquiring && !isFinishReasonStop) prompt.write('', lastMessage.content);
       setPrompt(context.userId, prompt);
       if (!lastMessage.isEnquiring) updateHistory(context.id, (history) => history.patch(text));
+      // Update threadId in source
+      if (threadId && threadId !== context.source.threadId) {
+        context.source.threadId = threadId;
+        const { updateSources } = await import('../repository/index.js');
+        await updateSources(context.id, (source) => { source.threadId = threadId; });
+      }
       const defaultActions = ALL_COMMANDS.filter(({ type }) => type === lastMessage.content);
       const actions = isFinishReasonStop ? defaultActions : [COMMAND_BOT_CONTINUE];
       context.pushText(text, actions);

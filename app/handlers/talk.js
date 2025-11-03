@@ -32,10 +32,19 @@ const exec = (context) => check(context) && (
         const { trimmedText } = context;
         prompt.writeImage(ROLE_HUMAN, trimmedText).write(ROLE_AI);
       }
-      const { text, isFinishReasonStop } = await generateCompletion({ prompt });
+      const { text, isFinishReasonStop, threadId } = await generateCompletion({ 
+        prompt,
+        threadId: context.source.threadId,
+      });
       prompt.patch(text);
       setPrompt(context.userId, prompt);
       updateHistory(context.id, (history) => history.write(config.BOT_NAME, text));
+      // Update threadId in source
+      if (threadId && threadId !== context.source.threadId) {
+        context.source.threadId = threadId;
+        const { updateSources } = await import('../repository/index.js');
+        await updateSources(context.id, (source) => { source.threadId = threadId; });
+      }
       const actions = isFinishReasonStop ? [COMMAND_BOT_FORGET] : [COMMAND_BOT_CONTINUE];
       context.pushText(text, actions);
     } catch (err) {

@@ -23,6 +23,16 @@ app.get('/', async (req, res) => {
   res.status(200).send({ status: 'OK', currentVersion, latestVersion });
 });
 
+// Health check endpoint (useful for Render cron jobs to prevent sleep)
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok',
+    platform: config.RENDER ? 'render' : (config.VERCEL_ENV ? 'vercel' : 'local'),
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 app.post(config.APP_WEBHOOK_PATH, validateLineSignature, async (req, res) => {
   try {
     await storage.initialize();

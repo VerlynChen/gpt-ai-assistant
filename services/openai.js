@@ -98,8 +98,106 @@ const createAudioTranscriptions = ({
   });
 };
 
+// Assistants API methods
+// All Assistants API requests require the OpenAI-Beta header
+const assistantsHeaders = {
+  'OpenAI-Beta': 'assistants=v2',
+};
+
+const createThread = () => {
+  return client.post('/v1/threads', {}, {
+    headers: assistantsHeaders,
+  });
+};
+
+const createThreadMessage = ({
+  threadId,
+  content,
+  role = ROLE_HUMAN,
+}) => {
+  return client.post(`/v1/threads/${threadId}/messages`, {
+    role,
+    content,
+  }, {
+    headers: assistantsHeaders,
+  });
+};
+
+const createThreadRun = ({
+  threadId,
+  assistantId,
+}) => {
+  return client.post(`/v1/threads/${threadId}/runs`, {
+    assistant_id: assistantId,
+  }, {
+    headers: assistantsHeaders,
+  });
+};
+
+const retrieveThreadRun = ({
+  threadId,
+  runId,
+}) => {
+  return client.get(`/v1/threads/${threadId}/runs/${runId}`, {
+    headers: assistantsHeaders,
+  });
+};
+
+const listThreadMessages = ({
+  threadId,
+  limit = 1,
+  order = 'desc',
+}) => {
+  return client.get(`/v1/threads/${threadId}/messages`, {
+    params: {
+      limit,
+      order,
+    },
+    headers: assistantsHeaders,
+  });
+};
+
+const cancelThreadRun = ({
+  threadId,
+  runId,
+}) => {
+  return client.post(`/v1/threads/${threadId}/runs/${runId}/cancel`, {}, {
+    headers: assistantsHeaders,
+  });
+};
+
+// Delete a thread (useful for cleanup)
+const deleteThread = ({
+  threadId,
+}) => {
+  return client.delete(`/v1/threads/${threadId}`, {
+    headers: assistantsHeaders,
+  });
+};
+
+// Submit tool outputs (for function calling in v2)
+const submitToolOutputs = ({
+  threadId,
+  runId,
+  toolOutputs,
+}) => {
+  return client.post(`/v1/threads/${threadId}/runs/${runId}/submit_tool_outputs`, {
+    tool_outputs: toolOutputs,
+  }, {
+    headers: assistantsHeaders,
+  });
+};
+
 export {
   createAudioTranscriptions,
   createChatCompletion,
   createImage,
+  createThread,
+  createThreadMessage,
+  createThreadRun,
+  retrieveThreadRun,
+  listThreadMessages,
+  cancelThreadRun,
+  deleteThread,
+  submitToolOutputs,
 };
