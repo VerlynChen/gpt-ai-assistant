@@ -45,7 +45,7 @@ const exec = (context) => check(context) && (
         const { updateSources } = await import('../repository/index.js');
         await updateSources(context.id, (source) => { source.threadId = threadId; });
       }
-      const actions = isFinishReasonStop ? [COMMAND_BOT_FORGET] : [COMMAND_BOT_CONTINUE];
+      const actions = [];  // 空陣列 = 不顯示按鈕
       context.pushText(text, actions);
     } catch (err) {
       context.pushError(err);
