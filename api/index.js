@@ -45,8 +45,16 @@ app.post(config.APP_WEBHOOK_PATH, validateLineSignature, async (req, res) => {
   if (config.APP_DEBUG) printPrompts();
 });
 
-if (config.APP_PORT) {
-  app.listen(config.APP_PORT);
+// Render uses PORT environment variable, fallback to APP_PORT for local dev
+const PORT = process.env.PORT || config.APP_PORT || 10000;
+
+if (PORT) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`📍 Platform: ${config.RENDER ? 'Render' : (config.VERCEL_ENV ? 'Vercel' : 'Local')}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+    console.log(`📨 Webhook: http://localhost:${PORT}${config.APP_WEBHOOK_PATH}`);
+  });
 }
 
 export default app;
