@@ -228,17 +228,29 @@ const generateCompletion = async ({
       let text = content.text.value;
       
       // Handle annotations (file citations, file paths) - v2 API feature
+      // Remove citation markers like 【4:0†source】 from the text
       if (content.text.annotations && content.text.annotations.length > 0) {
-        // For now, we'll keep the text as-is
-        // In the future, you can process annotations to show file references
-        // content.text.annotations.forEach((annotation) => {
-        //   if (annotation.type === 'file_citation') {
-        //     // Handle file citations
-        //   } else if (annotation.type === 'file_path') {
-        //     // Handle file paths
-        //   }
-        // });
+        content.text.annotations.forEach((annotation) => {
+          // Remove the citation marker from text
+          if (annotation.text) {
+            text = text.replace(annotation.text, '');
+          }
+          
+          // Optionally, you can add file reference info at the end
+          // if (annotation.type === 'file_citation') {
+          //   // Could add: "參考來源: filename"
+          // }
+        });
       }
+      
+      // Also remove any remaining citation patterns like 【...†...】
+      text = text.replace(/【[^】]*†[^】]*】/g, '');
+      
+      // Remove any standalone citation markers like [1], [2], etc at the end
+      text = text.replace(/\s*\[\d+\]\s*/g, ' ');
+      
+      // Clean up extra whitespace
+      text = text.replace(/\s+/g, ' ').trim();
       
       return text;
     })

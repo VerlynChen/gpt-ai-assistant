@@ -8,6 +8,12 @@ import config from '../config/index.js';
 const convertMarkdownToLine = (text) => {
   let converted = text;
 
+  // First, remove GPT Assistant file citation markers
+  // Patterns like 【4:0†source】, 【citation_id†filename】, [1], [2] etc.
+  converted = converted.replace(/【[^】]*†[^】]*】/g, '');  // Remove 【...†...】
+  converted = converted.replace(/\s*\[\d+\]\s*/g, ' ');     // Remove [1], [2], etc.
+  converted = converted.replace(/\s*\[\d+:\d+†[^\]]*\]/g, ''); // Remove [4:0†source]
+  
   // Convert bold: **text** or __text__ -> 【text】
   converted = converted.replace(/\*\*(.+?)\*\*/g, '【$1】');
   converted = converted.replace(/__(.+?)__/g, '【$1】');
