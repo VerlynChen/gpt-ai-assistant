@@ -40,6 +40,8 @@ class Completion {
  * @returns {Promise<Object>}
  */
 const waitForRunCompletion = async (threadId, runId, maxAttempts = null) => {
+  const startTime = Date.now();
+  
   // Auto-adjust maxAttempts based on platform
   if (!maxAttempts) {
     if (config.VERCEL_ENV) {
@@ -58,11 +60,23 @@ const waitForRunCompletion = async (threadId, runId, maxAttempts = null) => {
       console.log(`[Local] Waiting for completion (max ${maxAttempts} attempts)`);
     }
   }
+  
+  // Use progressive polling intervals for better performance
+  // Start with shorter intervals, then gradually increase
+  const getPollingInterval = (attemptNumber) => {
+    if (attemptNumber < 2) return 200; // First 2 checks: 200ms (更激進)
+    if (attemptNumber < 5) return 300; // Next 3 checks: 300ms
+    if (attemptNumber < 8) return 500; // Next 3 checks: 500ms
+    return 1000; // After that: 1s
+  };
+  
   for (let i = 0; i < maxAttempts; i++) {
     const { data: run } = await retrieveThreadRun({ threadId, runId });
     
     // Completed successfully
     if (run.status === 'completed') {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      console.log(`[Assistant] Completed in ${elapsed}s after ${i + 1} attempts`);
       return run;
     }
     
@@ -95,8 +109,9 @@ const waitForRunCompletion = async (threadId, runId, maxAttempts = null) => {
     }
     
     // Still processing: queued, in_progress, cancelling
-    // Wait 1 second before next check
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Use progressive polling interval
+    const interval = getPollingInterval(i);
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
   
   // Provide helpful error message based on platform
@@ -139,132 +154,165 @@ const generateCompletion = async ({
     throw new Error('OPENAI_ASSISTANT_ID is not configured');
   }
 
-  // Create a new thread if not provided
-  let currentThreadId = threadId;
-  if (!currentThreadId) {
-    const { data: thread } = await createThread();
-    currentThreadId = thread.id;
-  }
-
-  // Get the last user message from prompt
-  // Note: In the old system, handlers often call write(ROLE_AI) with empty content
-  // We need to find the actual user message (not the empty AI placeholder)
-  let userMessage = null;
-  
-  // Search backwards for the last non-empty user message
-  for (let i = prompt.messages.length - 1; i >= 0; i--) {
-    const msg = prompt.messages[i];
-    if (msg.role === ROLE_HUMAN && msg.content) {
-      // Check if content is not just empty string or whitespace
-      if (typeof msg.content === 'string' && msg.content.trim()) {
-        userMessage = msg;
-        break;
-      } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-        // Image message
-        userMessage = msg;
-        break;
-      }
+  try {
+    // Create a new thread if not provided
+    let currentThreadId = threadId;
+    if (!currentThreadId) {
+      const { data: thread } = await createThread();
+      currentThreadId = thread.id;
+      console.log(`[Assistant] Created new thread: ${currentThreadId}`);
     }
-  }
 
-  if (!userMessage || !userMessage.content) {
-    throw new Error('No message content provided');
-  }
-
-  // Prepare content for Assistants API
-  let messageContent;
-  if (Array.isArray(userMessage.content)) {
-    // Image message - extract text and image URL
-    // For Assistants API, we need to convert the vision format
-    const textPart = userMessage.content.find(item => item.type === 'text');
-    const imagePart = userMessage.content.find(item => item.type === 'image_url');
+    // Get the last user message from prompt
+    // Note: In the old system, handlers often call write(ROLE_AI) with empty content
+    // We need to find the actual user message (not the empty AI placeholder)
+    let userMessage = null;
     
-    if (imagePart) {
-      // Assistants API v2 supports image URLs in messages
-      messageContent = userMessage.content;
-    } else {
-      messageContent = textPart?.text || 'Image';
-    }
-  } else {
-    messageContent = userMessage.content;
-  }
-
-  // Add message to thread
-  await createThreadMessage({
-    threadId: currentThreadId,
-    content: messageContent,
-  });
-
-  // Run the assistant
-  const { data: run } = await createThreadRun({
-    threadId: currentThreadId,
-    assistantId: config.OPENAI_ASSISTANT_ID,
-  });
-
-  // Wait for completion
-  const completedRun = await waitForRunCompletion(currentThreadId, run.id);
-
-  // Get the assistant's response
-  const { data: messagesResponse } = await listThreadMessages({
-    threadId: currentThreadId,
-    limit: 1,
-    order: 'desc',
-  });
-
-  const assistantMessage = messagesResponse.data[0];
-  if (!assistantMessage || !assistantMessage.content || assistantMessage.content.length === 0) {
-    throw new Error('No response from assistant');
-  }
-
-  // Verify it's from the assistant
-  if (assistantMessage.role !== 'assistant') {
-    throw new Error('Expected assistant message but got: ' + assistantMessage.role);
-  }
-
-  // Extract text from the message content (v2 API format)
-  const textContent = assistantMessage.content
-    .filter((content) => content.type === 'text')
-    .map((content) => {
-      let text = content.text.value;
-      
-      // Handle annotations (file citations, file paths) - v2 API feature
-      // Remove citation markers like 【4:0†source】 from the text
-      if (content.text.annotations && content.text.annotations.length > 0) {
-        content.text.annotations.forEach((annotation) => {
-          // Remove the citation marker from text
-          if (annotation.text) {
-            text = text.replace(annotation.text, '');
-          }
-          
-          // Optionally, you can add file reference info at the end
-          // if (annotation.type === 'file_citation') {
-          //   // Could add: "參考來源: filename"
-          // }
-        });
+    // Search backwards for the last non-empty user message
+    for (let i = prompt.messages.length - 1; i >= 0; i--) {
+      const msg = prompt.messages[i];
+      if (msg.role === ROLE_HUMAN && msg.content) {
+        // Check if content is not just empty string or whitespace
+        if (typeof msg.content === 'string' && msg.content.trim()) {
+          userMessage = msg;
+          break;
+        } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+          // Image message
+          userMessage = msg;
+          break;
+        }
       }
-      
-      // Also remove any remaining citation patterns like 【...†...】
-      text = text.replace(/【[^】]*†[^】]*】/g, '');
-      
-      // Remove any standalone citation markers like [1], [2], etc at the end
-      text = text.replace(/\s*\[\d+\]\s*/g, ' ');
-      
-      // Clean up extra whitespace
-      text = text.replace(/\s+/g, ' ').trim();
-      
-      return text;
-    })
-    .join('\n');
+    }
 
-  if (!textContent.trim()) {
-    throw new Error('Assistant response contained no text content');
+    if (!userMessage || !userMessage.content) {
+      throw new Error('No message content provided');
+    }
+
+    // Prepare content for Assistants API
+    let messageContent;
+    if (Array.isArray(userMessage.content)) {
+      // Image message - extract text and image URL
+      // For Assistants API, we need to convert the vision format
+      const textPart = userMessage.content.find(item => item.type === 'text');
+      const imagePart = userMessage.content.find(item => item.type === 'image_url');
+      
+      if (imagePart) {
+        // Assistants API v2 supports image URLs in messages
+        messageContent = userMessage.content;
+      } else {
+        messageContent = textPart?.text || 'Image';
+      }
+    } else {
+      messageContent = userMessage.content;
+    }
+
+    // Add message to thread
+    await createThreadMessage({
+      threadId: currentThreadId,
+      content: messageContent,
+    });
+
+    // Run the assistant
+    const { data: run } = await createThreadRun({
+      threadId: currentThreadId,
+      assistantId: config.OPENAI_ASSISTANT_ID,
+    });
+    
+    console.log(`[Assistant] Started run: ${run.id}`);
+
+    // Wait for completion
+    const completedRun = await waitForRunCompletion(currentThreadId, run.id);
+
+    // Get the assistant's response
+    const { data: messagesResponse } = await listThreadMessages({
+      threadId: currentThreadId,
+      limit: 1,
+      order: 'desc',
+    });
+
+    const assistantMessage = messagesResponse.data[0];
+    if (!assistantMessage || !assistantMessage.content || assistantMessage.content.length === 0) {
+      throw new Error('No response from assistant');
+    }
+
+    // Verify it's from the assistant
+    if (assistantMessage.role !== 'assistant') {
+      throw new Error('Expected assistant message but got: ' + assistantMessage.role);
+    }
+
+    // Extract text from the message content (v2 API format)
+    const textContent = assistantMessage.content
+      .filter((content) => content.type === 'text')
+      .map((content) => {
+        let text = content.text.value;
+        
+        // Handle annotations (file citations, file paths) - v2 API feature
+        // Remove citation markers like 【4:0†source】 from the text
+        if (content.text.annotations && content.text.annotations.length > 0) {
+          content.text.annotations.forEach((annotation) => {
+            // Remove the citation marker from text
+            if (annotation.text) {
+              text = text.replace(annotation.text, '');
+            }
+            
+            // Optionally, you can add file reference info at the end
+            // if (annotation.type === 'file_citation') {
+            //   // Could add: "參考來源: filename"
+            // }
+          });
+        }
+        
+        // Also remove any remaining citation patterns like 【...†...】
+        text = text.replace(/【[^】]*†[^】]*】/g, '');
+        
+        // Remove any standalone citation markers like [1], [2], etc at the end
+        text = text.replace(/\s*\[\d+\]\s*/g, ' ');
+        
+        // Clean up extra whitespace (but preserve line breaks for LINE formatting)
+        // Replace multiple spaces (but not newlines) with single space
+        text = text.replace(/[^\S\n]+/g, ' ');
+        // Remove trailing spaces from each line
+        text = text.replace(/[^\S\n]+$/gm, '');
+        // Remove leading spaces from each line  
+        text = text.replace(/^[^\S\n]+/gm, '');
+        // Limit consecutive newlines to maximum 2 (one blank line)
+        text = text.replace(/\n{3,}/g, '\n\n');
+        // Trim overall text
+        text = text.trim();
+        
+        return text;
+      })
+      .join('\n');
+
+    if (!textContent.trim()) {
+      throw new Error('Assistant response contained no text content');
+    }
+
+    return new Completion({
+      text: textContent.trim(),
+      finishReason: completedRun.status === 'completed' ? FINISH_REASON_STOP : completedRun.status,
+      threadId: currentThreadId,
+    });
+  } catch (error) {
+    // Enhanced error handling with more context
+    console.error('[Assistant] Error:', error.message);
+    
+    // Provide user-friendly error messages
+    if (error.message.includes('timeout') || error.message.includes('時間過長')) {
+      throw error; // Already formatted
+    }
+    
+    if (error.message.includes('rate_limit_exceeded')) {
+      throw new Error('API 請求過於頻繁，請稍後再試。');
+    }
+    
+    if (error.message.includes('invalid_api_key')) {
+      throw new Error('API 金鑰無效，請檢查設定。');
+    }
+    
+    // Re-throw with original message
+    throw error;
   }
-
-  return new Completion({
-    text: textContent.trim(),
-    finishReason: completedRun.status === 'completed' ? FINISH_REASON_STOP : completedRun.status,
-    threadId: currentThreadId,
-  });
 };
 
 export default generateCompletion;

@@ -30,11 +30,15 @@ const exec = (context) => check(context) && (
       }
     }
     
-    // Clear threadId to start a new thread on next conversation
-    if (context.source.threadId) {
+    // Clear threadId and conversation rounds to start fresh
+    if (context.source.threadId || context.source.conversationRounds > 0) {
       context.source.threadId = null;
+      context.source.conversationRounds = 0;
       const { updateSources } = await import('../repository/index.js');
-      await updateSources(context.id, (source) => { source.threadId = null; });
+      await updateSources(context.id, (source) => { 
+        source.threadId = null;
+        source.conversationRounds = 0;
+      });
     }
     
     context.pushText(COMMAND_BOT_FORGET.reply);
