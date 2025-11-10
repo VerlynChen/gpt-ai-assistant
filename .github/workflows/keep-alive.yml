@@ -1,0 +1,38 @@
+name: Keep Render Alive
+
+# 防止 Render 免費版服務休眠
+# Render 免費版會在 15 分鐘無活動後休眠
+# 此 workflow 每 10 分鐘 ping 一次健康檢查端點
+
+on:
+  schedule:
+    # 每 10 分鐘執行一次 (cron 格式：分 時 日 月 週)
+    # */10 表示每 10 分鐘
+    - cron: '*/10 * * * *'
+  
+  # 允許手動觸發（在 GitHub Actions 頁面可以手動執行）
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Ping Health Endpoint
+        run: |
+          echo "🏓 Pinging health endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://你的應用名稱.onrender.com/health)
+          echo "📊 Response code: $response"
+          
+          if [ "$response" -eq 200 ]; then
+            echo "✅ Service is alive!"
+          else
+            echo "⚠️ Service returned status code: $response"
+            exit 1
+          fi
+      
+      - name: Log Timestamp
+        run: |
+          echo "⏰ Pinged at: $(date)"
+          echo "🌍 Timezone: $(date +%Z)"
+
