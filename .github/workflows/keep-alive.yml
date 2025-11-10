@@ -21,7 +21,7 @@ jobs:
       - name: Ping Health Endpoint
         run: |
           echo "🏓 Pinging health endpoint..."
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://gpt-ai-assistant-99gv.onrender.com/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://gpt-ai-assistant-99gv.onrender.com)
           echo "📊 Response code: $response"
           
           if [ "$response" -eq 200 ]; then
